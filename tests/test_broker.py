@@ -26,7 +26,7 @@ class SimpleRequest(Request):
         self.user = user
 
     def execute(self):
-        # time.sleep(0.1)
+        time.sleep(0.01)
         self.time = time.time()
 
 
