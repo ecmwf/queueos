@@ -1,0 +1,77 @@
+# (C) Copyright 2021 ECMWF.
+#
+# This software is licensed under the terms of the Apache Licence Version 2.0
+# which can be obtained at http://www.apache.org/licenses/LICENSE-2.0.
+# In applying this licence, ECMWF does not waive the privileges and immunities
+# granted to it by virtue of its status as an intergovernmental organisation
+# nor does it submit to any jurisdiction.
+
+# vi: ft=yaml
+
+# This file contains the rules that control the broker QoS
+# Each rule as the form:
+
+# <type> "Description"  <condition> : <conclusion>
+
+# Rules are applied to request that matched their <condition> predicate.
+# The use of <conclusion> depends
+
+# <type> can be 'limit', 'user', 'priority' or 'permission':
+
+# 'limit' is a global limit, shared by all users. The <conclusion> represent the capacity of the limit,
+# e.g. the maximum number of requests that matches that rule that can run simultaneously.
+# In order to run, a request must clear all its matching limits
+
+# 'user' is a per-user limit. Each user will have his/her own instance of that limit. Only requests from
+# the same user are matched against these rules. Unlike for the 'limit' rules, Only the first matching 'user'
+# rule is considered.
+
+# 'priority' rules a used to set the *initial* priority of a request. For a given requests, the <conclusion>
+# part of *all* matching rules added together. The resulting value is the starting priority. The priority of a
+# request is the sum of its starting priority and its age expressed in seconds. The value of the <conclusion>
+# are therefore also expressed in seconds, and can be seen as a 'handicap'. Once a request is queued, its priority
+# is increased by 1 every seconds, so low priority requests will eventually be run, even on a busy system.
+
+# 'permission' rules are used to check is a request can be run or should be refused. For a given request
+# if any <conclusion> part of matching permission rules evaluates to zero, the request status is immediately
+# set to ABORTED and the request is not run.
+
+
+# Per-user limits
+# The order of the limits is important, as the first match will be selected
+
+user "Limit for david"       (user == "david") : 5
+user "Default per-user limit"   (user ~ ".*")        : 2
+
+#
+
+priority "Priority for user david"    (user == "david")  :  hour(1)
+priority "Priority for use frank"       (user == "frank")    :  -hour(2)
+
+priority "Long jobs"      (estimatedTime > hour(1))    : -hour(2)
+priority "Access to dataset-3" (dataset == "dataset-3")          : -hour(2)
+
+#
+
+limit "Jobs estimated to last over over 30 minutes" (estimatedTime > minute(30)) : 3
+limit "Jobs estimated to last over 1 hour"          (estimatedTime > hour(1))    : 1
+
+limit "Jobs estimated to retrieve over 500Gb of data"  (estimatedSize > Gb(500))    : 2
+limit "Jobs estimated to retrieve over 1Tb of data"   (estimatedSize > Tb(1))      : 1
+
+
+limit "Limit for dataset-1"    (dataset == "dataset-1")      : 2
+limit "Limit for adaptor1" (adaptor == "adaptor1")   : numberOfWorkers - 2
+
+
+# Another example is to keep requests in the queue if something is temporarely unavailable
+
+limit "Availability of adaptor" (!available(adaptor)) : 0
+
+
+permission "Job too large for adaptor2" (estimatedSize > Tb(1) && adaptor == "adaptor2") : false
+
+# Example of a more complicated permission rule:
+
+permission "Only david can run jobs that are thought to run for over 2 hours" (estimatedTime > hour(2)) : (user == "david")
+permission "Baudouin cannot access adaptor2"  (user == "david" && adaptor == "adaptor2"): false
